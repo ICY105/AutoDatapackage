@@ -134,7 +134,7 @@ class comparision:
             return None
 
 def main():
-    print("Input table directory with a ""vanilla.json"" and other loot tables.")
+    print("Input directory with a ""vanilla.json"" and other loot tables.")
     print("output is the name of the directory")
     directory = input()
 
