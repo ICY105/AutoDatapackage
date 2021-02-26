@@ -134,8 +134,9 @@ class comparision:
             return None
 
 def main():
-    #directory = input()
-    directory = "village_armorer"
+    print("Input table directory with a ""vanilla.json"" and other loot tables.")
+    print("output is the name of the directory")
+    directory = input()
 
     files = [f for f in listdir(directory) if isfile(join(directory, f))]
     tables = []
