@@ -14,6 +14,11 @@ def save(f, table):
     fp = open(f,'w')
     json.dump(table.convert_to_dict(), fp, indent=2)
 
+def check_prefix(s):
+    if not ':' in s:
+        s = "minecraft:" + s
+    return s
+
 #container for a loot table file
 class lootTable:
     def __init__(self, name, jsonObject):
@@ -27,7 +32,6 @@ class lootTable:
 
             if('functions' in jsonObject):
                 for f in jsonObject['functions']:
-                    print(f)
                     self.functions.append(function(f))
 
             if('pools' in jsonObject):
@@ -108,9 +112,11 @@ class entry:
         self.functions = []
         self.children = []
 
-        if('type' in jsonObject and 'name' in jsonObject):
+        if('type' in jsonObject):
             self.type_ = jsonObject['type']
-            self.name = jsonObject['name']
+
+            if('name' in jsonObject):
+                self.name = jsonObject['name']
 
             if('weight' in jsonObject):
                 self.weight = jsonObject['weight']
@@ -124,18 +130,19 @@ class entry:
 
             if('functions' in jsonObject):
                 for f in jsonObject['functions']:
-                    self.conditions.append(condition(f))
+                    self.functions.append(condition(f))
 
             if('children' in jsonObject):
                 for c in jsonObject['children']:
-                    self.conditions.append(entry(c))
+                    self.children.append(entry(c))
 
     #converts the object to a python dictonary, for use with saving
     def convert_to_dict(self):
         out = {
-            "name":self.name,
             "type":self.type_
         }
+        if self.name != None:
+            out["name"] = self.name
         if self.weight != 1:
             out["weight"] = self.weight
         if self.quality != 0:
@@ -156,7 +163,18 @@ class entry:
     
     #returns true if the provided entry is considered equal to this entry
     def equals(self, entry):
-        return self.type_ == entry.type_ and self.name == entry.name
+        if check_prefix(self.type_) == "minecraft:alternatives" and check_prefix(entry.type_) == "minecraft:alternatives":
+            for e1 in self.children:
+                match = False
+                for e2 in entry.children:
+                    if e1.equals(e2):
+                        match = True
+                        break
+                if not match:
+                    return False
+            return True
+        else:
+            return check_prefix(self.type_) == check_prefix(entry.type_) and check_prefix(self.name) == check_prefix(entry.name)
 
 #container for "function" arguements. These are not parsed.
 class function:
