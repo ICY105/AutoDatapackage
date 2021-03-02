@@ -3,6 +3,7 @@ Object defination of a Minecrat loot table
 """
 
 import json
+import math
 
 #loads the give file location and creates a lootTable object
 def load(f):
@@ -21,12 +22,14 @@ def check_prefix(s):
 
 #container for a loot table file
 class lootTable:
+
     def __init__(self, name, jsonObject):
-        self.name = name
+        self.name = None
         self.type_ = None
         self.functions = []
         self.pools = []
 
+        self.name = name
         if('type' in jsonObject):
             self.type_ = jsonObject['type']
 
@@ -55,6 +58,7 @@ class lootTable:
 
 #container for pools in a loot table
 class pool:
+
     def __init__(self, jsonObject):
         self.rolls = 0
         self.bonus_rolls = 0
@@ -64,9 +68,13 @@ class pool:
 
         if('rolls' in jsonObject):
             self.rolls = numberProvider(jsonObject['rolls'])
+        else:
+            self.rolls = numberProvider(0)
 
         if('bonus_rolls' in jsonObject):
             self.bonus_rolls = numberProvider(jsonObject['bonus_rolls'])
+        else:
+            self.bonus_rolls = numberProvider(0)
             
         if('entries' in jsonObject):
             for e in jsonObject['entries']:
@@ -103,6 +111,7 @@ class pool:
 
 #container for entries in a pool
 class entry:
+
     def __init__(self, jsonObject):
         self.type_ = None
         self.name = None
@@ -111,7 +120,7 @@ class entry:
         self.conditions = []
         self.functions = []
         self.children = []
-
+    
         if('type' in jsonObject):
             self.type_ = jsonObject['type']
 
@@ -130,7 +139,7 @@ class entry:
 
             if('functions' in jsonObject):
                 for f in jsonObject['functions']:
-                    self.functions.append(condition(f))
+                    self.functions.append(function(f))
 
             if('children' in jsonObject):
                 for c in jsonObject['children']:
@@ -176,18 +185,111 @@ class entry:
         else:
             return check_prefix(self.type_) == check_prefix(entry.type_) and check_prefix(self.name) == check_prefix(entry.name)
 
+#container for "number provider" arguements.
+class numberProvider:
+
+    def __init__(self, jsonObject):
+        self.value = 0
+        self.type_ = None
+        self.target = None
+        self.score = None
+        self.scale = 1
+        self.min_ = 0
+        self.max_ = 0
+        self.p = 0
+        self.n = 0
+
+        try:
+            self.value = float(jsonObject)
+            self.type_ = "minecraft:constant"
+        except ValueError:
+            self.init_values(jsonObject)
+        except TypeError:
+            self.init_values(jsonObject)
+        
+        if self.type_ == None and (self.min_ != 0 or self.max_ != 0):
+            self.type_ = "minecraft:uniform"
+
+    def init_values(self, jsonObject):
+        if self.value == 0:
+            if('type' in jsonObject):
+                self.type_ = jsonObject['type']
+            if('min' in jsonObject):
+                self.min_ = jsonObject['min']
+            if('max' in jsonObject):
+                self.max_ = jsonObject['max']
+            if('p' in jsonObject):
+                self.p = jsonObject['p']
+            if('n' in jsonObject):
+                self.n = jsonObject['n']
+            if('target' in jsonObject):
+                self.target = jsonObject['target']
+            if('scale' in jsonObject):
+                self.scale = jsonObject['scale']
+            if('score' in jsonObject):
+                self.score = jsonObject['score']
+
+    def convert_to_dict(self):
+        out = { "type": self.type_ }
+        if self.type_ == "minecraft:constant":
+            return round(self.value)
+        elif self.type_ == "minecraft:uniform":
+            out["min"] = math.floor(self.min_)
+            out["max"] = math.ceil(self.max_)
+            return out
+        elif self.type_ == "minecraft:bionomal":
+            out["p"] = self.p
+            out["n"] = self.n
+            return out
+        elif self.type_ == "minecraft:score":
+            out["target"] = self.target
+            out["score"] = self.score
+            if self.scale != 1:
+                out["scale"] = self.scale
+            return out
+        else:
+            return 0
+
+    def get_average(self):
+        if self.type_ == "minecraft:constant":
+            return round(self.value)
+        elif self.type_ == "minecraft:uniform":
+            return (math.floor(self.min_) + math.ceil(self.max_))/2
+        elif self.type_ == "minecraft:bionomal":
+            return self.n
+        elif self.type_ == "minecraft:score":
+            return self.scale
+        else:
+            return 0
+
+    #morphs value by scale
+    #useful for growing/shrinking the size of pools
+    def scale_value(self, scale):
+        self.value *= scale
+        self.min_ *= scale
+        self.max_ *= scale
+        self.n *= scale
+        self.scale *= scale    
+    
+    #sets output scale
+    def set_value(self, scale):
+        self.value = scale
+        self.min_ = scale
+        self.max_ = scale
+        self.n = scale
+        self.scale = scale
+
 #container for "function" arguements. These are not parsed.
 class function:
     def __init__(self, jsonObject):
+        self.name = None
+
+        if('function' in jsonObject):
+            self.name = jsonObject['function']
         self.value = jsonObject
 
-    def convert_to_dict(self):
-        return self.value
-
-#container for "number provider" arguements. These are not parsed.
-class numberProvider:
-    def __init__(self, jsonObject):
-        self.value = jsonObject
+    def equals(self, function):
+        return self.name == function.name
 
     def convert_to_dict(self):
         return self.value
@@ -195,7 +297,14 @@ class numberProvider:
 #container for "condition" arguements. These are not parsed.
 class condition:
     def __init__(self, jsonObject):
+        self.name = None
+        
+        if('condition' in jsonObject):
+            self.name = jsonObject['condition']
         self.value = jsonObject
+
+    def equals(self, condition):
+        return self.name == condition.name
 
     def convert_to_dict(self):
         return self.value

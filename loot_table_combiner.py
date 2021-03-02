@@ -1,7 +1,19 @@
 """
 Merges all loot tables in a directory.
 Currently uses "vanilla.json" as the default loot table.
-Note: ignores non-entry modifications like functions, conditions, counts, weights, etc.
+Current Limitations:
+    1. If a new table modifies an existing entry (ie. adds a condition 'only drop apples
+       in forest biome'), and another new table removes the modified entry and
+       replaces it with a new entry, (ie. removes 'apple' and adds 'green apple'),
+       then the modifications are lost (that is, the condition of 'apples only drop
+       in forest biomes' does not get applied to green apples)
+
+    2. Modified conditions and functions don't get merged. For example, a base table
+       pool has the condition 'random chance = 0.5', and a new table modifies this to
+       'random chance = 0.75', then the value will stay 0.5 and won't be changed.
+
+    3. Doesn't handle base table pools with the multiple occurences of the same entry
+       name very well (for example, if a pool has multiple 'alternitives' entries)
 """
 
 from os import listdir
@@ -134,9 +146,10 @@ class comparision:
             return None
 
 def main():
-    print("Input directory with a ""vanilla.json"" and other loot tables.")
-    print("output is the name of the directory")
-    directory = input()
+    #print("Input directory with a ""vanilla.json"" and other loot tables.")
+    #print("output is the name of the directory")
+    #directory = input()
+    directory = "test_cases/wheat"
 
     files = [f for f in listdir(directory) if isfile(join(directory, f))]
     tables = []
@@ -166,7 +179,7 @@ def mergeTables(baseTable,tables):
 
     ### add/remove pools and entries
 
-    #init deletion table
+    #init marking tables
     deletionTable = []
     for pool in baseTable.pools:
         deletionTable.append([False] * len(pool.entries))
@@ -183,7 +196,23 @@ def mergeTables(baseTable,tables):
         for i in comp.get_deleted_pools():
             for j in range(len(deletionTable[i])):
                 deletionTable[i][j] = True
+    
+    #merge pool conditions
+    for comp in comparisions:
+        for function in comp.nt.functions:
+            if not any(f.equals(function) for f in baseTable.functions):
+                baseTable.functions.append(function)    
 
+    #merges pool factors
+    for i in range(len(baseTable.pools)):
+        new_pools = []
+        for comp in comparisions:
+            for mapping in comp.pool_map:
+                if mapping[0] == i:
+                    new_pools.append(comp.nt.pools[mapping[1]])
+        if len(new_pools) > 0:
+            merge_pool_factors(baseTable.pools[i], new_pools)
+    
     #append new entries to existing tables
     for comp in comparisions:
         for mapping in comp.pool_map:
@@ -197,9 +226,12 @@ def mergeTables(baseTable,tables):
     
     #remove deleted entries
     for i in range(len(deletionTable)-1,-1,-1):
+        count = len(baseTable.pools[i].entries)
         for j in range(len(deletionTable[i])-1,-1,-1):
             if deletionTable[i][j]:
                 del baseTable.pools[i].entries[j]
+        if len(baseTable.pools[i].entries) > 0:
+            baseTable.pools[i].rolls.scale_value( count/len(baseTable.pools[i].entries) )
     
     #remove deleted pools
     for i in range(len(deletionTable)-1,-1,-1):
@@ -207,6 +239,85 @@ def mergeTables(baseTable,tables):
             del baseTable.pools[i]
     
     return baseTable
+
+#merges 'new pool list' (npl) onto 'base pool' (bp)
+def merge_pool_factors(bp, npl):
+    #scale rolls
+    value = 0
+    for pool in npl:
+        value += pool.rolls.get_average()
+    print(value)
+    value /= len(npl)
+    if bp.rolls.get_average() != 0:
+        bp.rolls.scale_value( value/bp.rolls.get_average() )
+    else:
+        bp.rolls.set_value(value)
+
+    #scale bonus rolls
+    value = 0
+    for pool in npl:
+        value += pool.bonus_rolls.get_average()
+    if bp.bonus_rolls.get_average() != 0:
+        bp.bonus_rolls.scale_value( (value/len(npl))/bp.bonus_rolls.get_average() )
+    else:
+        bp.bonus_rolls.set_value(value)
+
+    #merge functions
+    for pool in npl:
+        for function in pool.functions:
+            if not any(f.equals(function) for f in bp.functions):
+                bp.functions.append(function)    
+
+    #merge conditions
+    for pool in npl:
+        for condition in pool.conditions:
+            if not any(c.equals(condition) for c in bp.conditions):
+                bp.conditions.append(condition)
+
+    #merge entries
+    for entry in bp.entries:
+        entries = []
+        for pool in npl:
+            for entry2 in pool.entries:
+                if entry.equals(entry2):
+                    entries.append(entry2)
+        merge_entries(entry, entries)
+
+#merges 'new entry list' (nel) onto 'base entry' (be)
+def merge_entries(be, nel):
+    #scale weight
+    value = 0
+    for entry in nel:
+        value += entry.weight
+    be.weight = value/len(nel)
+
+    #scale quality
+    value = 0
+    for entry in nel:
+        value += entry.quality
+    be.quality = value/len(nel)
+
+    #merge functions
+    for pool in nel:
+        for function in pool.functions:
+            if not any(f.equals(function) for f in be.functions):
+                be.functions.append(function)
+
+    #merge conditions
+    for pool in nel:
+        for condition in pool.conditions:
+            if not any(c.equals(condition) for c in be.conditions):
+                be.conditions.append(condition)
+
+    #merge children
+    for entry in be.children:
+        entries = []
+        for entry2 in nel:
+            for entry3 in entry2.children:
+                if entry.equals(entry3):
+                    entries.append(entry3)
+        merge_entries(entry, entries)
+
 
 if __name__ == "__main__":
     main()
